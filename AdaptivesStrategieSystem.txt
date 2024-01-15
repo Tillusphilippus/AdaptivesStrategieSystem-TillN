@@ -1,0 +1,1180 @@
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Random;
+import java.util.List;
+
+
+/**
+ * Die Klasse AdaptiverBot ist ein Bot, der einen Spieler simuliert.
+ * Der AdaptiveBot ist mit einem Scanner ausgestattet.
+ * Der Scanner übernimmt das "sehen" für den Bot und wählt für ihm passende Strategien aus.
+ * Damit der Spieler seine Strategie dynamisch anpassen kann hat er keine eigenen Strategiemethoden.
+ * Er besitzt lediglich ein Strategie Object, dass für ihn eine Karte aussucht.
+ * Dies hat den Vorteil, dass der Bot sehr flexibel ist in seiner Kartenauswahl, und der Scanner für ihn die Strategie aussuchen kann.
+ * Die Hauptaufgabe des AdaptivenBots ist die Weitergabe von Daten an den Scanner und seine Strategie.
+ * Dies sorgt vor allem für Übersichtlichkeit und eine einfache Erweiterbarkeit des Bots.
+ *
+ * @author Till
+ * @version 2.0
+ */
+public class AdaptiverBot extends HolsDerGeierSpieler{
+
+    //Der Scanner überwacht das Spiel und passt die Strategie des Bots an.
+    private final Scanner scanner = new Scanner(this, this.getHdg());
+
+    //Die currentStrategie ist die aktuell ausgewählte Strategie des Bots. Standardmäßig ist dies die AdaptiveStrategie.
+    private Strategie currentStrategie = new AdaptiveStrategy(scanner);
+
+    //Die Liste ausgelagerteStrategien speichert die vergangenen Strategien des Bots. Dadurch kann er zu seiner Ursprungsstrategie zurückkehren, ohne ein neues Objekt erstellen zu müssen.
+    private final ArrayList<Strategie> ausgelagerteStrategien = new ArrayList<>();
+
+    /**
+     * AdaptiverBot() ist der Standartkonstruktor. Das heißt, die Startstrategie ist die adaptive Strategie.
+     */
+    public AdaptiverBot() {
+        setCurrentStrategie(new AdaptiveStrategy(scanner));
+    }
+
+    /**
+     * AdaptiverBot(Strategie strategie) ermöglicht es die Startstrategie individuell zu setzen.
+     */
+    public AdaptiverBot(Strategie strategie) {
+        setCurrentStrategie(strategie);
+    }
+
+    /**
+     * reset() gibt den reset() befehl an den Scanner und die Strategie weiter.
+     * Der Bot selbst muss nicht nach einer Runde resettet werden.
+     * Es ist jedoch erforderlich, den Scanner und die Strategie zu resetten, damit diese die Spielzüge der letzten Runde erfassen können.
+     */
+    @Override
+    public void reset() {
+        scanner.reset();
+        currentStrategie.reset();
+    }
+
+    /**
+     * gibKarte(int naechsteKarte) ist die Hauptmethode des Bots, hier wird eine Karte zum ausgewählt.
+     * Zuerst gibt der Bot alle relevanten Informationen an den Scanner weiter.
+     * Danach lässt er seine aktuelle Strategie eine Karte auswählen.
+     *
+     * @return int Karte
+     */
+    @Override
+    public int gibKarte(int naechsteKarte) {
+        scanner.starteNeuenZug(naechsteKarte);
+        return currentStrategie.gibKarte(naechsteKarte);
+    }
+
+    /**
+     * setCurrentStrategie(Strategie currentStrategie) ändert die Strategie des Bots.
+     * Die noch aktive Strategie wird in den Speicher gelegt.
+     * Dann wird die aktuelle Strategie mit der neuen Strategie überschrieben.
+     */
+    public void setCurrentStrategie(Strategie currentStrategie) {
+        ausgelagerteStrategien.add(this.currentStrategie);
+        this.currentStrategie = currentStrategie;
+    }
+
+    /**
+     * getNummerGegner() berechnet die Nummer des Gegnerischen spielers.
+     *
+     * @return int Nummer des gegnerischen Spielers
+     */
+    public int getNummerGegner() {
+        return (this.getNummer() == 1) ? 0 : 1;
+    }
+
+    /**
+     * ausgangsStrategie() ändert die Strategie zur Ausgangsstrategie.
+     */
+    public void ausgangsStrategie() {
+        this.currentStrategie = ausgelagerteStrategien.getFirst();
+    }
+
+    /**
+     * letzteStrategie() ändert die Strategie zur letzten gespielten Strategie.
+     */
+    public void letzteStrategie() {
+        this.currentStrategie = ausgelagerteStrategien.getLast();
+    }
+}
+
+/**
+ * Die AdaptiveStrategy ist eine selbst entwickelte Strategie, die sich immer bestmöglich an das Spiel anpassen soll.
+ * Sie orientiert sich daran, wie ich ein Spiel spielen würde.
+ * Mithilfe des Scanners kann sie jedoch den Spielverlauf analysieren und die Spielweise anpassen.
+ *
+ * @author Till N.
+ * @version 2.0
+ */
+public class AdaptiveStrategy extends Strategie {
+
+    //Es wird ein Scanner benötigt, um die aktuellen Karten im Spiel abfragen zu können.
+    private final Scanner scanner;
+
+    //Im Konstruktor der AdaptivenStrategie muss ein Scanner mitgegeben werden, damit dieser abgefragt werden kann.
+    public AdaptiveStrategy(Scanner scanner){
+        this.scanner = scanner;
+        scanner.reset(); // Scanner wird resettet, damit neue Kartenstapel erstellt werden.
+    }
+
+    @Override
+    public int gibKarte(int naechsteKarte) {
+
+        // Zwischenspeicher für die Karte die ausgespielt wird.
+        int auszuspielendeKarte;
+
+        // Die Karten aus dem letzten Zug werden vom Scanner abgefragt.
+        int letzteKarte = scanner.berechneLetzteKarte();
+        int letzteKarteGegner = scanner.berechneLetzteGegnerKarte();
+        int letzteKarteGeier = scanner.berechneLetzteGeierKarte();
+
+        // Wenn der letzte Zug unentschieden war, dann soll versucht werden die Punkte aus den beiden Runden zu bekommen, indem die höchste Karte gespielt wird.
+        if( letzteKarte == letzteKarteGegner && letzteKarteGeier != 97) {
+            auszuspielendeKarte = scanner.berechneHoechsteKarte();
+            return auszuspielendeKarte;
+        }
+
+        // Um eine Einschätzung zu haben, welche Karte gut sein könnte kommt ein +5 Mapping zum Einsatz.
+        auszuspielendeKarte = berechneEmpfohlenenKartenwert(naechsteKarte);
+
+        // Danach wird geprüft, ob nicht auch eine niedrigere Karte gespielt werden kann, um trotzdem zu gewinnen.
+        auszuspielendeKarte = pruefeObNiedrigereKarteMoeglichIst(auszuspielendeKarte);
+
+        // Zuletzt wird noch geprüft, ob die Karte, die Empfohlen wurde, auch noch auf der Hand ist. Falls nicht, wird eine verfügbare Karte ausgewählt.
+        auszuspielendeKarte = pruefeObKarteAufHand(auszuspielendeKarte);
+
+        // Die Karte wird ausgespielt
+        return auszuspielendeKarte;
+    }
+
+    /**
+     * berechneEmpfohlenenKartenwert(int naechsteKarte) mapped die Karte zur Geierkarte +5.
+     *
+     * @return empfohlene Karte
+     */
+    private int berechneEmpfohlenenKartenwert(int naechsteKarte) {
+        if (naechsteKarte<0) {
+            return naechsteKarte+6;
+        } else {
+            return naechsteKarte+5;
+        }
+    }
+
+    /**
+     * berechneEmpfohlenenKartenwert(int naechsteKarte) testet, ob eine niedrigere Karte denselben effekt hat.
+     * Dazu wird geschaut ob der Gegner überhaupt eine höhere Karte auf der Hand hat.
+     * Wenn nicht, wird nie niedrigste Karte gewählt, mit der trotzdem gewonnen wird.
+     *
+     * @param karte zu überprüfende Karte
+     * @return empfohlene Karte
+     */
+    private int pruefeObNiedrigereKarteMoeglichIst(int karte) {
+        if(karte > scanner.berechneHoechsteGegnerKarte()+1) {
+            karte = scanner.berechneHoechsteGegnerKarte()+1;
+        }
+        return karte;
+    }
+
+    /**
+     * pruefeObKarteAufHand(int karte) testet, ob sich die ausgewählte Karte überhaupt auf der Hand befindet.
+     * Wenn die Karte höher ist als die höchste Karte auf der Hand, wird die nächst niedrigere Karte genommen.
+     * Wenn nicht, wird die niedrigste Karte genommen.
+     *
+     * ! - Diese Methode ist nicht gut gelungen und müsste für eine aktualisierte Version überarbeitet werden.
+     *
+     * @param karte zu überprüfende Karte
+     * @return empfohlene Karte
+     */
+    private int pruefeObKarteAufHand(int karte) {
+        if(!scanner.getHandkarten().contains(karte)) {
+            if(karte > scanner.berechneHoechsteKarte()) {
+                karte = scanner.berechneHoechsteKarte();
+            } else {
+                karte = scanner.berechneNiedrigsteKarte();
+            }
+        }
+
+        return karte;
+    }
+
+    @Override
+    public void reset() {
+
+    }
+}
+
+/**
+ * Die Klasse Scanner ist dafür zuständig die beste Strategie für den Spieler auszuwählen.
+ * Dazu speichert sie alle Informationen über das Spiel, den Gegner und den Spieler.
+ * Am Ende jeder Runde wird der Gegner analysiert und die Strategie angepasst, wenn nötig.
+ *
+ * @author Till N.
+ * @version 2.0
+ */
+public class Scanner {
+
+    //spiel speichert die Referenz auf das Spiel des Scanners.
+    private final HolsDerGeier spiel;
+
+    //spieler speichert die Referenz auf den Spieler des Scanners.
+    private final AdaptiverBot spieler;
+
+    //strategieCounterPicker und strategieRandomPicker ermöglichen es Gegenstrategien erstellen zu lassen.
+    private final StrategieCounterPicker strategieCounterPicker = new StrategieCounterPicker();
+    private final StrategieRandomPicker strategieRandomPicker = new StrategieRandomPicker();
+
+    //strategieAnpassenTracker speichert die Zeit der Runden bis zum nächsten Strategiewechsel.
+    private int strategieAnpassenTracker = 5;
+
+    //mappedFound und alignedFound speichern die Information, ob in der gegnerischen Strategie ein Mapping oder ein Alignment gefunden wurden.
+    private boolean mappedFound;
+    private boolean alignedFound;
+
+    //Die Handkarten und Geierkarten Listen speichern die Karten auf Hand und die ausgespielten Karten der Spielteilnehmer.
+    private final ArrayList<Integer> handkartenGegner = new ArrayList<>();
+    private final ArrayList<Integer> handkartenGegnerAusgespielt = new ArrayList<>();
+    private final ArrayList<Integer> handkarten = new ArrayList<>();
+    private final ArrayList<Integer> handkartenAusgespielt = new ArrayList<>();
+    private final ArrayList<Integer> geierKartenRunde = new ArrayList<>();
+    private final ArrayList<Integer> geierKartenRundeAusgespielt = new ArrayList<>();
+
+    /**
+     * Scanner(AdaptiverBot spieler, HolsDerGeier spiel). Im Konstruktor des Scanners müssen Referenzen auf den Spieler und das Spiel mitgegeben werden.
+     */
+    public Scanner(AdaptiverBot spieler, HolsDerGeier spiel) {
+        this.spieler = spieler;
+        this.spiel = spiel;
+        handKartenZuruecksetzen();
+    }
+
+    /**
+     * starteNeuenZug (int letzteGeierKarte) startet die Überprüfung des letzten Zuges.
+     *
+     * @param letzteGeierKarte Die letzte ausgespielte Geierkarte.
+     */
+    public void starteNeuenZug (int letzteGeierKarte) {
+
+        /* In der if-Bedingung wird überprüft ob der Spieler in der letzten Runde eine Karte gespielt hat. (Ausnahme ist die erste und Runde eines neuen Spiels.)
+        *  Danach wird die zuletzt gespielte Karte den Handkarten entfernt und den ausgespielten Karten hinzugefügt.
+        */
+        if(spiel.letzterZug(spieler.getNummer()) != -99) {
+            int nummer = spieler.getNummer();
+            int letzteKarte = spiel.letzterZug(nummer);
+            handkarten.remove((Integer) letzteKarte);
+            handkartenAusgespielt.add(letzteKarte);
+        }
+
+        /* In der if-Bedingung wird überprüft ob der Gegner in der letzten Runde eine Karte gespielt hat. (Ausnahme ist die erste Runde eines neuen Spiels.)
+        *  Danach wird die zuletzt gespielte Karte den Handkarten entfernt und den ausgespielten Karten hinzugefügt.
+        */
+        if(spiel.letzterZug(spieler.getNummerGegner()) != -99) {
+            int nummerGegner = spieler.getNummerGegner();
+            int letzteKarteGegner = spiel.letzterZug(nummerGegner);
+            handkartenGegner.remove((Integer) letzteKarteGegner);
+            handkartenGegnerAusgespielt.add(letzteKarteGegner);
+        }
+
+        /*
+        *  Zuletzt wird die gespielte Geierkarte den Geierkarten entfernt und den ausgespielten Geierkarten hinzugefügt.
+        */
+        geierKartenRunde.remove((Integer) letzteGeierKarte);
+        geierKartenRundeAusgespielt.add(letzteGeierKarte);
+    }
+
+    /**
+     * findeBesteStrategie() fragt die Strategie-Picker-Klassen, ob eine änderung der Strategie notwendig ist.
+     * Zuerst wird abgefragt, ob in der Spielweise des Gegners ein Mapping entdeckt wurde und ggf. gekontert.
+     * Danach wird abgefragt, ob in der Spielweise des Gegners ein Alignment entdeckt wurde und ggf. gekontert.
+     * Im Anschluss wird abgefragt, ob die Strategie geändert werden sollte, um die Spielstrategie zu verschleiern und nicht berechenbar zu sein.
+     * Sollte dem so sein, wird eine zufällige neue Strategie gewählt und ein neuer Timer für die nächste Anpassung gesetzt. (Zwischen 0 und 10 Runden)
+     * Falls nicht, kehrt der Bot zur Ausgangsstrategie zurück und der Timer wird dekrementiert.
+     */
+    private void findeBesteStrategie() {
+        if(mappedFound) {
+            spieler.setCurrentStrategie(strategieCounterPicker.kontereGegenstrategieMapped());
+        } else if(alignedFound) {
+            spieler.setCurrentStrategie(strategieCounterPicker.kontereGegenstrategieAligned());
+        } else if (strategieAnpassenTracker == 0) {
+            spieler.setCurrentStrategie(strategieRandomPicker.getRandomStrategie());
+            Random random = new Random();
+            strategieAnpassenTracker = random.nextInt(11);
+        } else {
+            spieler.ausgangsStrategie();
+            strategieAnpassenTracker--;
+        }
+    }
+
+    /**
+     * reset() startet die Vorbereitung auf die nächste Runde.
+     */
+    public void reset() {
+
+        //Es wird geprüft, ob in der letzten Runde Karten gespielt wurden.
+        if(!handkartenGegnerAusgespielt.isEmpty()) {
+
+            //Wenn Karten gespielt wurden, kann der strategieCounterPicker basierend auf diesen Karten auf Muster in der Spielweise des Gegners prüfen.
+            mappedFound = strategieCounterPicker.sucheMappedStrategie(geierKartenRundeAusgespielt, handkartenGegnerAusgespielt);
+            alignedFound = strategieCounterPicker.sucheAlignedStrategie(handkartenGegnerAusgespielt);
+
+            //Danach wird geschaut, ob eine neue Strategie für die nächste Runde sinnvoll ist.
+            findeBesteStrategie();
+        }
+
+        //Am Ende werde noch alle Kartenstapel zurückgesetzt.
+        handKartenZuruecksetzen();
+        geierKartenZuruecksetzen();
+    }
+
+    /**
+     * handKartenZuruecksetzen() setzte alle Handkartenstapel zurück und füllt sie wieder von 1 bis 15 auf.
+     */
+    private void handKartenZuruecksetzen() {
+        handkarten.clear();
+        handkartenAusgespielt.clear();
+        handkartenGegner.clear();
+        handkartenGegnerAusgespielt.clear();
+        for (int i = 1; i <= 15; i++) {
+            handkartenGegner.add(i);
+            handkarten.add(i);
+        }
+    }
+
+    /**
+     * geierKartenZuruecksetzen() setzte alle Stapel mit Geierkarten zurück und füllt sie wieder von -5 bis 10 auf.
+     */
+    private void geierKartenZuruecksetzen () {
+        geierKartenRunde.clear();
+        geierKartenRundeAusgespielt.clear();
+        for (int i = -5; i <= 10; i++) {
+            if(i != 0) {
+                geierKartenRunde.add(i);
+            }
+        }
+    }
+
+    /**
+     * geierKartenZuruecksetzen() berechnet die höchste Karte auf der Hand des Gegners.
+     *
+     * @return int höchste Karte Gegner
+     */
+    public int berechneHoechsteGegnerKarte() {
+        return Collections.max(handkartenGegner);
+    }
+
+    /**
+     * berechneNiedrigsteGegnerKarte() berechnet die niedrigste Karte auf der Hand des Gegners.
+     *
+     * @return int niedrigste Karte Gegner
+     */
+    public int berechneNiedrigsteGegnerKarte() {
+        return Collections.min(handkartenGegner);
+    }
+
+    /**
+     * berechneLetzteGegnerKarte() berechnet letzte Karte des Gegners.
+     *
+     * @return int letzte Karte Gegner
+     */
+    public int berechneLetzteGegnerKarte() {
+        if(!handkartenGegnerAusgespielt.isEmpty()) {
+            return handkartenGegnerAusgespielt.getLast();
+        }
+        return 99;
+    }
+
+    /**
+     * berechneLetzteGeierKarte() berechnet letzte Geierkarte.
+     *
+     * @return int letzte Geierkarte
+     */
+    public int berechneLetzteGeierKarte() {
+        if(!geierKartenRundeAusgespielt.isEmpty()) {
+            return geierKartenRundeAusgespielt.getLast();
+        }
+        return 97;
+    }
+
+    /**
+     * berechneLetzteKarte() berechnet letzte Karte des Spielers.
+     *
+     * @return int letzte Karte
+     */
+    public int berechneLetzteKarte() {
+        if(!handkartenAusgespielt.isEmpty()) {
+            return handkartenAusgespielt.getLast();
+        }
+        return 98;
+    }
+
+    /**
+     * berechneHoechsteKarte() berechnet höchste Karte des Spielers.
+     *
+     * @return int höchste Karte
+     */
+    public int berechneHoechsteKarte() {
+        return Collections.max(handkarten);
+    }
+
+    /**
+     * berechneNiedrigsteKarte() berechnet niedrigste Karte des Spielers.
+     *
+     * @return int niedrigste Karte
+     */
+    public int berechneNiedrigsteKarte() {
+        return Collections.min(handkarten);
+    }
+
+    /**
+     * getHandkartenGegner() gibt die Handkarten des Gegners wieder.
+     *
+     * @return ArrayList<Integer> Handkarten Gegner
+     */
+    public ArrayList<Integer> getHandkartenGegner() {
+        return handkartenGegner;
+    }
+
+    /**
+     * removeHandkartenGegner(int ausgespielteKarte) entfernt eine Karte von den Handkarten des Gegners.
+     *
+     * @param ausgespielteKarte Die zu entfernende Karte.
+     */
+    public void removeHandkartenGegner(int ausgespielteKarte) {
+        this.handkartenGegner.remove(ausgespielteKarte);
+    }
+
+    /**
+     * getHandkartenGegnerAusgespielt() gibt die ausgespielten Karten des Gegners zurück.
+     *
+     * @return ArrayList<Integer> ausgespielte Karten des Gegners
+     */
+    public ArrayList<Integer> getHandkartenGegnerAusgespielt() {
+        return handkartenGegnerAusgespielt;
+    }
+
+    /**
+     * addHandkartenAusgespielt(int ausgespielteKarte) fügt den ausgelegten Karten des Gegners eine Karte hinzu.
+     *
+     * @param ausgespielteKarte Die ausgelegte Karte des Gegners.
+     */
+    public void addHandkartenGegnerAusgespielt(int ausgespielteKarte) {
+        this.handkartenGegnerAusgespielt.add(ausgespielteKarte);
+    }
+
+    /**
+     * getHandkarten() gibt die Handkarten des Spielers wieder.
+     *
+     * @return ArrayList<Integer> Handkarten
+     */
+    public ArrayList<Integer> getHandkarten() {
+        return handkarten;
+    }
+
+    /**
+     * removeHandkarten(int ausgespielteKarte) entfernt eine Karte von den Handkarten.
+     *
+     * @param ausgespielteKarte Die zu entfernende Karte.
+     */
+    public void removeHandkarten(int ausgespielteKarte) {
+        this.handkarten.remove(ausgespielteKarte);
+    }
+
+    /**
+     * getHandkartenAusgespielt() gibt die ausgespielten Karten des Spielers zurück.
+     *
+     * @return ArrayList<Integer> ausgespielte Handkarten
+     */
+    public ArrayList<Integer> getHandkartenAusgespielt() {
+        return handkartenAusgespielt;
+    }
+
+    /**
+     * addHandkartenAusgespielt(int ausgespielteKarte) fügt den ausgelegten Karten eine Karte hinzu.
+     *
+     * @param ausgespielteKarte Die ausgelegte Karte.
+     */
+    public void addHandkartenAusgespielt(int ausgespielteKarte) {
+        this.handkartenAusgespielt.add(ausgespielteKarte);
+    }
+
+    /**
+     * getGeierKartenRunde() gibt die Geierkarten, die noch offen sind, wieder.
+     *
+     * @return ArrayList<Integer> Geierkarten
+     */
+    public ArrayList<Integer> getGeierKartenRunde() {
+        return geierKartenRunde;
+    }
+
+    /**
+     * removeGeierKartenRunde(int ausgespielteKarte) entfernt eine Geierkarte.
+     *
+     * @param ausgespielteKarte Die zu entfernende Geierkarte.
+     */
+    public void removeGeierKartenRunde(int ausgespielteKarte) {
+        this.geierKartenRunde.remove(ausgespielteKarte);
+    }
+
+    /**
+     * getGeierKartenRundeAusgespielt() gibt die ausgespielten Geierkarten wieder.
+     *
+     * @return ArrayList<Integer> ausgespielte Geierkarten
+     */
+    public ArrayList<Integer> getGeierKartenRundeAusgespielt() {
+        return geierKartenRundeAusgespielt;
+    }
+
+    /**
+     * addGeierKartenRundeAusgespielt(int ausgespielteKarte) fügt den ausgelegten Geierkarten eine Karte hinzu.
+     *
+     * @param ausgespielteKarte Die ausgelegte Geierkarte.
+     */
+    public void addGeierKartenRundeAusgespielt(int ausgespielteKarte) {
+        this.geierKartenRundeAusgespielt.add(ausgespielteKarte);
+    }
+}
+
+/**
+ * Die Klasse StrategieCounterPicker ist dafür zuständig auf gegnerische Strategien zu prüfen und diese zu kontern.
+ * Dazu wertet sie nach jeder Runde die Spielzüge des Gegners aus.
+ * Außerdem stellt sie Methoden zur Verfügung, die effektive Konter für Strategien erstellen.
+ *
+ * Die Version 1 des StrategieCounterPicker erkennt und kontert Mapped, sowie Aligned Strategien.
+ * Dafür müssen mindestens zwei Runden mit dieser Strategie gespielt sein.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+public class StrategieCounterPicker {
+
+    //Zwischenspeicher für die Ergebnisse der letzten Runde
+    private final ArrayList<Integer> mappingLastRound = new ArrayList<>();
+    private final ArrayList<Integer> alignedLastRound = new ArrayList<>();
+
+    /**
+     * sucheAlignedStrategie(ArrayList<Integer> gegnerKartenLetztesSpiel) wertet die gegnerischen Karten so aus, dass Alignment erkannt werden kann.
+     *
+     * @param gegnerKartenLetztesSpiel Die Karten, die der Gegner in der letzten Runde gespielt hat.
+     * @return boolean Alignment erkannt.
+     */
+    public boolean sucheAlignedStrategie(ArrayList<Integer> gegnerKartenLetztesSpiel) {
+        /*
+        * Da in den gegnerischen Karten des letzten Spiels die Karte der letzten Runde fehlt, müssen wir die letzte Karte des Gegners berechnen.
+        * Dies passiert, indem wie für jede Karte überprüfen, ob sie in den Karten enthalten ist.
+        * Die fehlende Karte muss die Karte sein, die zuletzt ausgespielt wurde.
+        */
+        for (int i = 1; i <= 15; i++) {
+            if (!gegnerKartenLetztesSpiel.contains(i)) {        // Prüfen, ob die Karte enthalten ist.
+                gegnerKartenLetztesSpiel.add(i);                // Die fehlende Karte ergänzen.
+                break;                                          // Die Schleife beenden, nachdem die fehlende Zahl gefunden wurde, um Ressourcen zu sparen.
+            }
+        }
+
+        //Prüfen, ob die Alignments in dieser Runde und in der letzten Runde identisch sind.
+        if(!alignedLastRound.isEmpty() && alignedLastRound.equals(gegnerKartenLetztesSpiel) ) {         // Wenn ja:
+            alignedLastRound.clear();                                                                   //      Alignment zurücksetzen.
+            alignedLastRound.addAll(gegnerKartenLetztesSpiel);                                          //      neues Alignment speichern.
+            return true;                                                                                //      Zurückgeben, dass Alignment erkannt wurde.
+        } else {                                                                                        // wenn nein:
+            alignedLastRound.clear();                                                                   //      Alignment zurücksetzen.
+            alignedLastRound.addAll(gegnerKartenLetztesSpiel);                                          //      Alignment für nächste Runde speichern.
+            return false;                                                                               //      Zurückgeben, dass kein Alignment erkannt wurde.
+        }
+    }
+
+    /**
+     * sucheMappedStrategie(ArrayList<Integer> geierKartenLetztesSpiel, ArrayList<Integer> gegnerKartenLetztesSpiel) wertet die gegnerischen Karten so aus, dass Mapping erkannt werden kann.
+     *
+     * @param gegnerKartenLetztesSpiel Die Karten, die der Gegner in der letzten Runde gespielt hat.
+     * @return boolean Mapping erkannt.
+     */
+    public boolean sucheMappedStrategie(ArrayList<Integer> geierKartenLetztesSpiel, ArrayList<Integer> gegnerKartenLetztesSpiel) {
+
+        /*
+        * Da in den gegnerischen Karten des letzten Spiels die Karte der letzten Runde fehlt, müssen wir die letzte Karte des Gegners berechnen.
+        * Dies passiert, indem wie für jede Karte überprüfen, ob sie in den Karten enthalten ist.
+        * Die fehlende Karte muss die Karte sein, die zuletzt ausgespielt wurde.
+        */
+        for (int i = 1; i <= 15; i++) {
+            if (!gegnerKartenLetztesSpiel.contains(i)) {                                               // Prüfen, ob die Karte enthalten ist.
+                gegnerKartenLetztesSpiel.add(i);                                                       // Die fehlende Karte ergänzen.
+                break;                                                                                 // Die Schleife beenden, nachdem die fehlende Zahl gefunden wurde
+            }
+        }
+
+        //mapping speichert das ausgewertete Mapping ab.
+        ArrayList<Integer> mapping = new ArrayList<>();
+
+        //Es wird geschaut, welche Karte der Gegner auf die jeweilige Geierkarte gespielt hat und in einer festgelegten Struktur abgespeichert.
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(-1)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(1)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(2)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(3)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(4)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(5)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(6)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(7)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(8)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(9)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(10)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(-5)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(-4)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(-3)));
+        mapping.add(gegnerKartenLetztesSpiel.get(geierKartenLetztesSpiel.indexOf(-2)));
+
+        //Prüfen, ob die Mappings in dieser Runde und in der letzten Runde identisch sind.
+        if(!mappingLastRound.isEmpty() && mappingLastRound.equals(mapping) ) {              // Wenn ja:
+            mappingLastRound.clear();                                                       //      Mapping zurücksetzen.
+            mappingLastRound.addAll(mapping);                                               //      neues Mapping speichern.
+            return true;                                                                    //      Zurückgeben, dass Mapping erkannt wurde.
+        } else {                                                                            // wenn nein:
+            mappingLastRound.clear();                                                       //      Mapping zurücksetzen.
+            mappingLastRound.addAll(mapping);                                               //      erkanntes Mapping abspeichern.
+            return false;                                                                   //      Zurückgeben, dass kein Mapping erkannt wurde.
+        }
+    }
+
+    /**
+     * kontereGegenstrategieAligned() erstellt eine Gegenstrategie auf das gespeicherte Alignment.
+     *
+     * @return Gegenstrategie
+     */
+    public Strategie kontereGegenstrategieAligned() {
+        ArrayList<Integer> alignedTemp = new ArrayList<>(alignedLastRound);
+        return waehleGegenstrategieAligned(alignedTemp);
+    }
+
+    /**
+     * kontereGegenstrategieMapped() erstellt eine Gegenstrategie auf das gespeicherte Mapping.
+     *
+     * @return Gegenstrategie
+     */
+    public Strategie kontereGegenstrategieMapped() {
+        ArrayList<Integer> mappedTemp = new ArrayList<>(mappingLastRound);
+        return waehleGegenstrategieMapped(mappedTemp);
+    }
+
+    /**
+     * waehleGegenstrategieAligned(ArrayList<Integer> alignedTemp) erstellt eine Gegenstrategie auf das mitgegebene Alignment.
+     * Diese Hilfsmethode ist notwendig, da das gespeicherte Alignment nicht bearbeitet werden soll.
+     * Deshalb wird eine Kopie des Alignments an diese Methode übergeben.
+     *
+     * @return Gegenstrategie
+     */
+    private Strategie waehleGegenstrategieAligned(ArrayList<Integer> alignedTemp) {
+        alignedTemp.set(alignedTemp.indexOf(15), 0);                    // Tauscht die 15 mit der 0, da die gegnerische 15-Karte nicht besiegt werden kann.
+        alignedTemp.replaceAll(integer -> integer + 1);                 // Erhöht alle Werte um 1, um immer 1 höher zu spielen als der Gegner
+        return new CustomMapped(alignedTemp);
+    }
+
+    /**
+     * private Strategie waehleGegenstrategieMapped(ArrayList<Integer> mappingTemp) erstellt eine Gegenstrategie auf das mitgegebene Mapping.
+     * Diese Hilfsmethode ist notwendig, da das gespeicherte Mapping nicht bearbeitet werden soll.
+     * Deshalb wird eine Kopie des Mappings an diese Methode übergeben.
+     *
+     * @return Gegenstrategie
+     */
+    private Strategie waehleGegenstrategieMapped(ArrayList<Integer> mappingTemp) {
+        mappingTemp.set(mappingTemp.indexOf(15), 0);                    // Tauscht die 15 mit der 0, da die gegnerische 15-Karte nicht besiegt werden kann.
+        mappingTemp.replaceAll(integer -> integer + 1);                 // Erhöht alle Werte um 1, um immer 1 höher zu spielen als der Gegner
+        return new CustomMapped(mappingTemp);
+    }
+}
+
+/**
+ * Die Klasse StrategieRandomPicker ist dafür zuständig zufällige Strategien zu erstellen.
+ *
+ * Die Version 2 des StrategieRandomPicker kann für jede Strategie ein zufälliges Strategieobjekt erstellen.
+ * Außerdem kann sie zufällig eine zufällige Strategie erstellen.
+ *
+ * @author Till N.
+ * @version 2.0
+ */
+public class StrategieRandomPicker {
+    /**
+     * getRandomLinearMappedStrategie() erstellt eine Linear Mapped Strategie, mit einem zufälligen Parameterwert.
+     *
+     * @return Linear Mapped Strategie
+     */
+    public Strategie getRandomLinearMappedStrategie() {
+        Random random = new Random();
+        int amount = random.nextInt(15)+1;
+        return new LinearMapped(amount);
+    }
+
+    /**
+     * getRandomCustomMappedStrategie() erstellt eine Custom Mapped Strategie, mit einem zufälligen Mapping.
+     *
+     * @return Custom Mapped Strategie
+     */
+    public Strategie getRandomCustomMappedStrategie() {
+        ArrayList<Integer> random = new ArrayList<>();
+        for (int i = 1; i <= 15; i++) {
+            random.add(i);
+        }
+        Collections.shuffle(random);
+        return new CustomMapped(random);
+    }
+
+    /**
+     * getRandomDefensiveStrategie() erstellt eine Defensive Strategie, mit einem zufälligen Parameter.
+     *
+     * @return Defensive Strategie
+     */
+    public Strategie getRandomDefensiveStrategie() {
+        Random random = new Random();
+        boolean bool = random.nextBoolean();
+        return new Defensive(bool);
+    }
+
+    /**
+     * getRandomOffensiveStrategie() erstellt eine Offensive Strategie, mit einem zufälligen Parameter.
+     *
+     * @return Offensive Strategie
+     */
+    public Strategie getRandomOffensiveStrategie() {
+        Random random = new Random();
+        boolean bool = random.nextBoolean();
+        return new Offensive(bool);
+    }
+
+    /**
+     * getRandomizedStrategie() erstellt eine Randomized Strategie.
+     *
+     * @return Randomized Strategie
+     */
+    public Strategie getRandomizedStrategie() {
+        return new Randomized();
+    }
+
+    /**
+     * getRandomStrategie() wählt zufällig eine der Methoden zur Erstellung einer zufälligen Strategie.
+     *
+     * @return Zufällige Strategie
+     */
+    public Strategie getRandomStrategie() {
+        Random random = new Random();
+        int strategie = random.nextInt(5);
+        switch (strategie) {
+            case 0:
+                return getRandomLinearMappedStrategie();
+            case 1:
+                return getRandomCustomMappedStrategie();
+            case 2:
+                return getRandomDefensiveStrategie();
+            case 3:
+                return getRandomOffensiveStrategie();
+            case 4:
+                return getRandomizedStrategie();
+            default:
+                return getRandomStrategie();
+        }
+    }
+}
+
+/**
+ * Die abstrakte Klasse Strategie stellt eine abgespeckte Version eines Spielers dar.
+ * Alle strategien müssen auch gibKarte() und reset() implementieren, aber müssen keinem Spiel zugeordnet sein um.
+ * Das macht es einfach einem Spieler eine neue Strategie zu geben.
+ * Wenn gibKarte() oder reset() des Spielers aufgerufen werden, kann er dies an jede der Strategien weitergeben.
+ * Außerdem macht es die Strategie Objekte wesentlich kleiner als viele Spieler Objekte.
+ * Und das ohne auf die Fähigkeiten eines Spielers zu verzichten, da mit einem Verweis auf einen Scanner alles abgefragt werden kann.
+ * Auch werden so die für das Spiel relevanten Informationen lediglich im Scanner gespeichert und müssen nur dort bearbeitet werden.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+public abstract class Strategie {
+    public abstract int gibKarte(int letzteKarte);
+    public abstract void reset();
+}
+
+/**
+ * Die CustomMapped Strategie beschreibt Spieler, die auf eine Geier-/Mauskarte immer denselben Kartenwert spielen.
+ * Beim CustomMapping wird für jede Karte ein Kartenwert festgelegt.
+ * Die gespielte Karte lässt sich also einfach vorhersagen.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+
+public class CustomMapped extends Strategie {
+
+    private int[] kartenWert = new int[15];
+
+    /**
+     * Im Konstruktor der CustomMapped Strategie wird mit Einzelwerden die Kartenwerte für die jeweiligen Karten festgelegt.
+     * m steht hier für minus und p für plus.
+     * Die Zahl ist der jeweilige Kartenwert.
+     * Auf die Geierkarte -1 wird also immer der in m1 festgelegte Wert gespielt.
+     */
+    public CustomMapped(int m1, int m2, int m3, int m4, int m5, int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, int p9, int p10){
+
+        /**
+         * Die Positiven Werte sind an dem jeweiligen Index einsortiert.
+         * Die Negativen Werte wurden absteigend an das Ende angefügt.
+         * Folgendes ergibt sich aus der Art der Speicherung im Array:
+         * Aus dem Kartenwert lässt sich der Index ablesen.
+         * Die Indexe der negativen Karten lassen sich mit dem Modulo-Operator berechnen.
+         * Die m1 am Anfang ist bedingt durch die Abweichung zwischen Stelle und Index.
+         */
+
+        kartenWert[0] = m1;
+        kartenWert[1] = p1;
+        kartenWert[2] = p2;
+        kartenWert[3] = p3;
+        kartenWert[4] = p4;
+        kartenWert[5] = p5;
+        kartenWert[6] = p6;
+        kartenWert[7] = p7;
+        kartenWert[8] = p8;
+        kartenWert[9] = p9;
+        kartenWert[10] = p10;
+        kartenWert[11] = m5;
+        kartenWert[12] = m4;
+        kartenWert[13] = m3;
+        kartenWert[14] = m2;
+    }
+
+    /**
+     * Als Alternative gibt es auch den Konstruktor mit einer fertigen Liste als Parameter.
+     * Hier muss darauf geachtet werden, dass die Formatierung eingehalten wird!
+     */
+    public CustomMapped(ArrayList<Integer> mapping) {
+        kartenWert = new int[mapping.size()];
+
+        for (int i = 0; i < mapping.size(); i++) {
+            kartenWert[i] = mapping.get(i);
+        }
+    }
+
+
+    @Override
+    public int gibKarte(int naechsteKarte) {
+
+        int ergebnis;
+
+        /**
+         * Hier wird der Index der jeweiligen Zahl berechnet.
+         * Bei den positiven Zahlen ist Kartenwert gleich Index.
+         * Bei den negativen Zahlen wird 16 aufaddiert, damit das Ergebnis immer positiv bleibt.
+         * Dann lässt sich der Index mit dem Modulo berechnen.
+         */
+
+        if (naechsteKarte < 0) {
+            ergebnis = kartenWert[(naechsteKarte + 16) % 15];
+        } else {
+            ergebnis = kartenWert[naechsteKarte];
+        }
+
+        return ergebnis;
+    }
+
+    @Override
+    public void reset() {
+
+    }
+}
+
+/**
+ * Die Defensive Strategie beschreibt Spieler, die zu Spielbeginn eher niedrige Karten spielen.
+ * Im Laufe der Partie steigen dann die Kartenwerte.
+ * Somit wird das frühe angreifen vermieden und eher dann gespielt, wenn andere Spieler schon hohe karten ausgespielt haben.
+ * Es ist also eine abwartende Strategie.
+ *
+ * @author Till N.
+ * @version 0.1
+ */
+public class Defensive extends Strategie {
+
+    /**
+     * kartenReihenfolge speichert die Reihenfolge der Karten ab, in der sie ausgespielt werden sollen.
+     * Um die Taktik etwas zu verschleiern und auch auf hohe Karten besser antworten zu können gibt es die option anKarteAnpassen.
+     * Wenn beim Erstellen eines Defensive Objects im Konstruktor true mitgegeben wird, greift eine andere Funktion zur Auswahl der gespielten Karte.
+     */
+
+    private final List<Integer> kartenReihenfolge = new ArrayList<>();
+    private final boolean anKarteAnpassen;
+
+    /**
+     * @param anKarteAnpassen Die Karten passen sich an die Höhe der Karte auf dem Feld an. Das bedeutet, wenn sehr hohe Karten gespielt werden kann es trotzdem sein, dass hohe karten früher gespielt werden.
+     */
+
+    public Defensive(boolean anKarteAnpassen){
+        this.anKarteAnpassen = anKarteAnpassen;
+        mischeKarten();
+    }
+
+    /**
+     * mischeKarten() fügt der Liste mit der Kartenreihenfolge alle Karten von klein nach groß sortiert hinzu.
+     */
+
+    private void mischeKarten(){
+            kartenReihenfolge.clear();
+            for(int i=1; i<=15; i++) {
+                kartenReihenfolge.add(i);
+            }
+    }
+
+    /**
+     * gibDefensiveKarte() ist der Algorithmus für die einfache Variante der Defensiven Spielweise.
+     * Es wird lediglich immer die erste, also niedrigste Karte auf der Hand gelegt.
+     */
+
+    private int gibDefensiveKarte() {
+        return kartenReihenfolge.removeFirst();
+    }
+
+    /**
+     * gibAngepassteDefensiveKarte() ist der Algorithmus für die erweiterte Variante der Defensiven Spielweise.
+     * Es wird eine zufällige Zahl zwischen 0 und 1 erstellt.
+     * Hat die aufgedeckte Karte einen hohen Wert, also über 5 wird eine zufällige Karte gelegt.
+     * Das soll dazu führen, dass um hohe Kartenwerte auch mit einer hohen Zahl gespielt werden kann.
+     * Ist es keine hohe Zahl, wird eine der drei niedrigsten Karten gespielt.
+     * Dadurch ist der Algorithmus nicht mehr so einfach zu erkennen.
+     */
+
+    private int gibAngepassteDefensiveKarte(int letzteKarte) {
+
+        Random random = new Random();
+        int index;
+
+        if(letzteKarte > 5) {
+            index = random.nextInt(kartenReihenfolge.size());
+        } else {
+            index = random.nextInt(Math.min(3, kartenReihenfolge.size()));
+        }
+
+        return kartenReihenfolge.remove(index);
+    }
+
+    /**
+     * gibKarte() wählt abhängig von der ausgewählten Spielweise die entsprechende Methode aus.
+     * Danach gibt es die jeweils ausgewählte Karte zurück.
+     */
+
+    @Override
+    public int gibKarte(int letzteKarte) {
+        int karte;
+        if(anKarteAnpassen) {
+            karte = gibAngepassteDefensiveKarte(letzteKarte);
+        } else {
+            karte = gibDefensiveKarte();
+        }
+        return karte;
+    }
+
+    /**
+     * reset() sorgt dafür, dass am Ende der Runde die Liste wieder neu aufgefüllt wird.
+     */
+
+    @Override
+    public void reset() {
+        kartenReihenfolge.clear();
+        mischeKarten();
+    }
+}
+
+/**
+ * Die LinearMapped Strategie beschreibt Spieler, die auf eine Geier-/Mauskarte immer denselben Kartenwert spielen.
+ * Beim LinearMapping wird auf den Kartenwert einfach ein Betrag von 1 bis 15 aufaddiert.
+ * Die 0 als Ergebnis wird übersprungen, deshalb wird auf negative Zahlen der Betrag +1 addiert.
+ * Die gespielte Karte lässt sich also einfach vorhersagen.
+ * Ein Beispiel wäre ein +5 Algorithmus, der immer die Geier-/Mauskarte +5 ausspielt.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+public class LinearMapped extends Strategie {
+
+    //betrag beschreibt die Menge, die auf die Geierkarte aufaddiert wird.
+    int betrag;
+
+    /**
+     * Im Konstruktor der CustomMapped Strategie wird ber Betrag des Inkrementierens mit angegeben.
+     *
+     * @param betrag Betrag des Inkrementierens
+     */
+    public LinearMapped(int betrag){
+        this.betrag = betrag;
+    }
+
+    @Override
+    public int gibKarte(int naechsteKarte) {
+
+        int ergebnis;
+
+        /*
+         * Auf die Karte wird der vorher festgelegte Betrag aufaddiert.
+         * Modulo 15, damit wir immer nur Karten auslegen bis maximal 15.
+         * Bei negativen Zahlen wir noch 1 aufaddiert.
+         */
+
+        if (naechsteKarte < 0) {
+            ergebnis = (15 + (naechsteKarte + betrag + 1)) % 15 ;
+        } else {
+            ergebnis = (naechsteKarte + betrag) % 15;
+        }
+
+        /*
+         * 15 mod 15 ergibt 0.
+         * Es ist also notwendig die 0 wieder zurück in eine 15 umzutauschen, da es eine 0 als Karte nicht gibt.
+         */
+
+        if(ergebnis == 0) {
+            ergebnis=15;
+        }
+
+        return ergebnis;
+    }
+
+    @Override
+    public void reset() {
+
+    }
+}
+
+/**
+ * Die Offensive Strategie beschreibt Spieler, die zu Spielbeginn eher hohe Karten spielen.
+ * Im Laufe der Partie sinken dann die Kartenwerte.
+ * Durch das frühe kämpfen um Karten werden schnell viele Punkte angesammelt.
+ * Jedoch lässt die Stärke am Ende deutlich nach.
+ * Sie stellt das Gegenstück zur Defensiven Strategie dar.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+public class Offensive extends Strategie {
+
+    /*
+     * kartenReihenfolge speichert die Reihenfolge der Karten ab, in der sie ausgespielt werden sollen.
+     * Um die Taktik etwas zu verschleiern und auch auf niedrige Karten besser antworten zu können gibt es die option anKarteAnpassen.
+     * Wenn beim Erstellen eines Defensive Objects im Konstruktor true mitgegeben wird, greift eine andere Funktion zur Auswahl der gespielten Karte.
+     */
+    private final List<Integer> kartenReihenfolge = new ArrayList<>();
+
+    // anKarteAnpassen sagt aus, ob die hohe der Geierkarte einen Einfluss auf die ausgespielte Karte haben soll.
+    private final boolean anKarteAnpassen;
+
+    /**
+     * Im Konstruktor der Offensiven Strategie wird angegeben, ob die hohe der Geierkarte einen Einfluss auf die ausgespielte Karte haben soll.
+     *
+     * @param anKarteAnpassen Die Karten passen sich an.
+     */
+    public Offensive(boolean anKarteAnpassen){
+        this.anKarteAnpassen = anKarteAnpassen;
+        mischeKarten();
+    }
+
+    /**
+     * mischeKarten() fügt der Liste mit der Kartenreihenfolge alle Karten von groß nach klein sortiert hinzu.
+     */
+    private void mischeKarten(){
+        kartenReihenfolge.clear();
+        for(int i=15; i>=1; i--) {
+            kartenReihenfolge.add(i);
+        }
+    }
+
+    /**
+     * gibOffensiveKarte() ist der Algorithmus für die einfache Variante der Offensiven Spielweise.
+     * Es wird lediglich immer die letzte, also höchste Karte auf der Hand gelegt.
+     *
+     * @return int Karte
+     */
+    private int gibOffensiveKarte() {
+        return kartenReihenfolge.removeLast();
+    }
+
+    /**
+     * gibAngepassteOffensiveKarte() ist der Algorithmus für die erweiterte Variante der Offensiven Spielweise.
+     * Es wird eine zufällige Zahl zwischen 0 und 1 erstellt.
+     * Hat die aufgedeckte Karte einen niedrigen Wert, also über unter 3 oder unter -3 wird eine zufällige Karte gelegt.
+     * Das soll dazu führen, dass um niedrige Kartenwerte auch mit einer niedrigen Zahl gespielt werden kann.
+     * Ist es keine niedrige Zahl, wird eine der drei höchsten Karten gespielt.
+     * Dadurch ist der Algorithmus nicht mehr so einfach zu erkennen und damit auch zu kontern.
+     */
+
+    private int gibAngepassteOffensiveKarte(int letzteKarte) {
+        Random random = new Random();
+        int index;
+
+        if((letzteKarte < 3 && letzteKarte > 0) || (letzteKarte > -3 && letzteKarte < 0)) {
+            index = random.nextInt(kartenReihenfolge.size());
+        } else {
+            index = kartenReihenfolge.size() -1 - random.nextInt(Math.min(3, kartenReihenfolge.size()));
+        }
+
+        return kartenReihenfolge.remove(index);
+    }
+
+    /**
+     * gibKarte() wählt abhängig von der ausgewählten Spielweise die entsprechende Methode aus.
+     * Danach gibt es die jeweils ausgewählte Karte zurück.
+     */
+
+    @Override
+    public int gibKarte(int letzteKarte) {
+        int karte;
+
+        if(anKarteAnpassen) {
+            karte = gibAngepassteOffensiveKarte(letzteKarte);
+        } else {
+            karte = gibOffensiveKarte();
+        }
+
+        return karte;
+    }
+
+    /**
+     * reset() sorgt dafür, dass am Ende der Runde die Liste wieder neu aufgefüllt wird.
+     */
+
+    @Override
+    public void reset() {
+        mischeKarten();
+    }
+}
+
+/**
+ * Die Randomized Strategie spielt immer zufällige Karten aus.
+ * Diese Strategie ist also nicht vorhersehbar, jedoch auch relativ leicht zu schlagen.
+ *
+ * @author Till N.
+ * @version 1.0
+ */
+public class Randomized extends Strategie {
+
+    //Liste der Karten auf der Hand
+    private List<Integer> karten = new ArrayList<>();
+
+    /**
+     * Beim Aufrufen des Konstruktor wird die Liste karten mit 15 Karten aufgefüllt.
+     */
+    public Randomized(){
+        kartenAuffuellen();
+    }
+
+    // Füllt karten mit allen Karten von 1 bis 15 auf.
+    private void kartenAuffuellen(){
+        for(int i=1; i<=15; i++) {
+            karten.add(i);
+        }
+    }
+
+    // Wählt zufällig eine der 15 Karten.
+    @Override
+    public int gibKarte(int letzteKarte) {
+        Random random = new Random();
+        int index = random.nextInt(karten.size());
+        return karten.remove(index);
+    }
+
+    // Setzt die Strategie zurück. Die Karten werden sicherheitshalber geleert und neu aufgefüllt.
+    @Override
+    public void reset() {
+        karten.clear();
+        kartenAuffuellen();
+    }
+}
